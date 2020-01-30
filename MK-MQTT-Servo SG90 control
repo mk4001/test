@@ -1,0 +1,119 @@
+/*
+  © MK 10 September 2019
+  MK-MQTT-Servo SG90 control
+  based on ESP8266
+
+  Read temperature from remote BME280 sensor and represent analogically on a Gauge
+
+*/
+
+#include <WiFiManager.h>
+#include <PubSubClient.h>
+
+//for LED status
+#include <Ticker.h>
+Ticker ticker;
+
+#include <Servo.h>
+Servo myservo;  // create servo object to control a servo
+// twelve servo objects can be created on most boards
+
+// Published values for SG90 servos; adjust if needed
+int minUs = 500;
+int maxUs = 2400;
+
+int pos = 90;      // initial position in degrees
+int rssi = 90;
+
+#define LED_PIN 2
+
+const char* ssid = "WLAN 7490-2.4GHz";
+const char* password = "06431928919070006302";
+const char* mqtt_server = "rpi.fritz.box";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+char msg[50];
+int value = 0;
+float t;
+String temp_str; //see last code block below use these to convert the float that you get back from Dallas to a string =str
+char string_temp[50];
+String clientId = "ESP8266-SG90";
+String Rssi = "";
+String topic = "";
+String StringOne;
+String msgOne = "";
+
+// Variables for time consuming
+long lastMsg = 0;
+#define TIMEOUT 60e3 // Time out in milliseconds (secondsE3)
+long now = TIMEOUT; //for the first time, get in to the loop
+long timeout = TIMEOUT; // pushed time out from MQTT Identify field
+
+void setup() {
+
+  pinMode(BUILTIN_LED, OUTPUT);
+  Serial.begin(115200);
+  // start ticker with 0.5 because we start in AP mode and try to connect
+  ticker.attach(0.6, tick);
+
+  myservo.attach(2);  // attaches the servo on GIO2 to the servo object
+  
+  //WiFiManager
+  //Local intialization. Once its business is done, there is no need to keep it around
+  WiFiManager wifiManager;
+  //reset settings - for testing
+  //wifiManager.resetSettings();
+
+  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wifiManager.setAPCallback(configModeCallback);
+
+  //fetches ssid and pass and tries to connect
+  //if it does not connect it starts an access point with the specified name
+  //here  "AutoConnectAP"
+  //and goes into a blocking loop awaiting configuration
+  if (!wifiManager.autoConnect()) {
+    Serial.println("failed to connect and hit timeout");
+    //reset and try again, or maybe put it to deep sleep
+    ESP.reset();
+    delay(1000);
+  }
+
+  //if you get here you have connected to the WiFi
+  Serial.println("connected...yeey :)");
+  ticker.detach();
+
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+
+  Serial.println("Program Start");
+
+}
+
+
+void loop() {
+
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+
+  // Report every TIMEOUT milliseconds.
+  if (now - lastMsg > timeout) { //control timeout in millisecs
+
+    lastMsg = now;
+
+    //getValues();
+
+    blinkLED();
+
+    WlanPower(clientId);
+    Serial.println("------------------------------------");
+
+  }
+
+  now = millis();
+
+}
